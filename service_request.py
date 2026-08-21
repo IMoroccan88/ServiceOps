@@ -7,22 +7,22 @@ service_request_bp = Blueprint("service_request", __name__)
 @service_request_bp.route("/service-request", methods=["GET", "POST"])
 def service_request():
 
-    # Check if the browser sent a GET request.
+# Check if the browser sent a GET request.
     if request.method == "GET":
 
-        # Get the value of "sr_number" from the URL.
-        # If no SR number was provided, this will return None.
+# Get the value of "sr_number" from the URL.
+# If no SR number was provided, this will return None.
         sr_number = request.args.get("sr_number")
 
-        # If no SR number was entered, display the Service Request page.
+# If no SR number was entered, display the Service Request page.
         if not sr_number:
             return render_template("service_request.html")
 
-    # Open one database connection for this request.
+# Open one database connection for this request.
         connection = get_db_connection()
         cursor = connection.cursor()
 
-        # After Cursor calls the DB, enter the syntax that should take place.
+# After Cursor calls the DB, enter the syntax that should take place.
         cursor.execute(
                 """
                 SELECT service_requests.sr_number,
@@ -41,19 +41,19 @@ def service_request():
                 """
             ,
             (sr_number,)
-            )
+        )
 
-            # and store it in the Python variable service_request.
+# and store it in the Python variable service_request.
         service_request = cursor.fetchone()
 
-            # Close the cursor when we're finished using it.
+# Close the cursor when we're finished using it.
         cursor.close()
 
-            # Close the database connection when we're finished.
+# Close the database connection when we're finished.
         connection.close()
 
 
-            # "If PostgreSQL returned a Service Request
+# "If PostgreSQL returned a Service Request
         if service_request:
 
             return f"""
@@ -67,31 +67,30 @@ def service_request():
 
             return "Requested Service Request does not exist."
             
-            
-    # If it wasn't GET, it must be POST.
-    # POST will eventually create a new Service Request.
+# If it wasn't GET, it must be POST.
+# POST will eventually create a new Service Request.
     else:
-    # Get the customer's name from the submitted form.
+# Get the customer's name from the submitted form.
         customer_name = request.form.get("customer_name")
 
-    # Get the company name from the submitted form.
+# Get the company name from the submitted form.
         company_name = request.form.get("company_name")
 
-    # Get the customer's email from the submitted form.
+# Get the customer's email from the submitted form.
         email = request.form.get("email")
 
-    # Get the selected priority from the submitted form.
+# Get the selected priority from the submitted form.
         priority = request.form.get("priority")
 
-    # Get the issue description from the submitted form.
+# Get the issue description from the submitted form.
         issue = request.form.get("issue")
 
-    # "Open one connection to PostgreSQL and create a cursor
-    # we can use for the entire Service Request creation process."
+# "Open one connection to PostgreSQL and create a cursor
+# we can use for the entire Service Request creation process."
         connection = get_db_connection()
         cursor = connection.cursor()
 
-    # "Search for the company the user entered."
+# "Search for the company the user entered."
         cursor.execute(
         """
         SELECT *
@@ -101,109 +100,111 @@ def service_request():
         (company_name,)
         )
 
-        # "Store the matching company row, if PostgreSQL found one."
+# "Store the matching company row, if PostgreSQL found one."
         company = cursor.fetchone()
 
-    # "If the company exists, get its company_id."
-    if company:
-        company_id = company[0]
+# If the company already exists, use its company_id.
+        if company:
+            company_id = company[0]
 
-        # "Now look for this customer's email under this specific company."
-        cursor.execute(
-        """
-        SELECT *
-        FROM customers
-        WHERE email = %s
-        AND company_id = %s
-        """,
-        (email, company_id)
-        )
-        # Store the customer returned by PostgreSQL.
-        customer = cursor.fetchone()
-
-    # If the customer exists, get their customer ID.
-        if customer:
-            customer_id = customer[0]
-
-
-        else: 
-            #create a new customer, associate them with the existing company, and create a new Service Request for them.
+# Look for this customer's email under this specific company.
             cursor.execute(
-            """
-            INSERT INTO customers (name, email, company_id)
-            VALUES (%s, %s, %s)
-            RETURNING customer_id
-            """,
-            (customer_name, email, company_id)
+                """
+                SELECT *
+                FROM customers
+                WHERE email = %s
+                AND company_id = %s
+                """,
+                (email, company_id)
             )
+
+# Store the customer returned by PostgreSQL, if one exists.
+            customer = cursor.fetchone()
+
+# If the customer already exists, use their customer_id.
+            if customer:
+                customer_id = customer[0]
+
+# Otherwise create the customer under the existing company.
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO customers (name, email, company_id)
+                    VALUES (%s, %s, %s)
+                    RETURNING customer_id
+                    """,
+                    (customer_name, email, company_id)
+                )
+
+                customer_id = cursor.fetchone()[0]
+
+# If the company does not exist, create the company first.
+        else:
+            cursor.execute(
+                """
+                INSERT INTO companies (company_name)
+                VALUES (%s)
+                RETURNING company_id
+                """,
+                (company_name,)
+            )
+
+            company_id = cursor.fetchone()[0]
+
+# Create the customer under the newly created company.
+            cursor.execute(
+                """
+                INSERT INTO customers (name, email, company_id)
+                VALUES (%s, %s, %s)
+                RETURNING customer_id
+                """,
+                (customer_name, email, company_id)
+            )
+
             customer_id = cursor.fetchone()[0]
+    
+# These still need to exist before the INSERT.
+    status = "Open"
 
-
-    else:
-        # If the company doesn't exist, create a new company, then create a new customer and Service Request associated with that company.
-        cursor.execute(
-        """
-        INSERT INTO companies (company_name)
-        VALUES (%s)
-        RETURNING company_id
-        """,
-        (company_name,)
-        )   
-        company_id = cursor.fetchone()[0]
-
-        # Create a new customer associated with the newly created company.
-        cursor.execute(
-        """
-        INSERT INTO customers (name, email, company_id)
-        VALUES (%s, %s, %s)
-        RETURNING customer_id
-        """,
-        (customer_name, email, company_id)
-        )   
-        customer_id = cursor.fetchone()[0]
-
-        # These still need to exist before the INSERT.
-        status = "Open"
-
-            # Generate the next SR number.
-        cursor.execute(
+# Generate the next SR number.
+    cursor.execute(
             """
             SELECT sr_number
             FROM service_requests
             ORDER BY sr_number DESC
             LIMIT 1
             """
-            )
+    )
 
-        last_sr = cursor.fetchone()
+    last_sr = cursor.fetchone()
 
-        if last_sr:
-                last_number = int(last_sr[0].replace("SR-", ""))
-                next_number = last_number + 1
-                sr_number = f"SR-{next_number:04d}"
-        else:
+    if last_sr:
+            last_number = int(last_sr[0].replace("SR-", ""))
+            next_number = last_number + 1
+            sr_number = f"SR-{next_number:04d}"
+    else:
             sr_number = "SR-0001"
 
 
-            # Create a new Service Request associated with the customer.
-            cursor.execute(
+# Create a new Service Request associated with the customer.
+    cursor.execute(
             """
             INSERT INTO service_requests
             (sr_number, customer_id, issue, priority, status)
             VALUES(%s, %s, %s, %s, %s)
             """,
             (sr_number, customer_id, issue, priority, status)
-            )
+    )
 
-            # Save the new Service Request to the database.
-            connection.commit()
+# Save the new Service Request to the database.
+    connection.commit()
 
-            # Close the database resources after the transaction is complete.
-            cursor.close()
-            connection.close()
+# Close the database resources after the transaction is complete.
+    cursor.close()
+    connection.close()
 
-            # Display confirmation and the newly created Service Request details.
-            return f"""
+# Display confirmation and the newly created Service Request details.
+    return f"""
                 Service Request Created Successfully<br><br>
                 SR Number: {sr_number}<br>
                 Customer: {customer_name}<br>

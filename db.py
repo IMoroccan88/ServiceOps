@@ -2,15 +2,37 @@
 
 
 import psycopg
+import boto3
+import json
 
 def get_db_connection():
-    connection = psycopg.connect(
-        host="localhost",
-        dbname="serviceops",
-        user="postgres",
-        password="1A2l3a4e$",
-        port=5433
+
+    # Create a connection client for AWS Secrets Manager in us-east-2.
+
+    secrets_client = boto3.client(
+        "secretsmanager",
+        region_name="us-east-2"
+    )   
+
+
+    # "Secrets Manager, give me the secret named ServiceOps/RDS/Credentials."
+    secret_response = secrets_client.get_secret_value(
+    SecretId="ServiceOps/RDS/Credentials"
     )
 
-    # Return the connection to the route that requested it.
+    # "Turn the secret text into something Python can read by key name."
+    secret = json.loads(secret_response["SecretString"])
+
+
+
+    # to connect to our RDS PostgreSQL database."
+    connection = psycopg.connect(
+    host=secret["host"],
+    dbname=secret["dbname"],
+    user=secret["username"],
+    password=secret["password"],
+    port=secret["port"]
+    )
+
+    # Return the database connection to whichever route requested it.
     return connection
