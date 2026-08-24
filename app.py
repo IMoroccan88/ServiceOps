@@ -26,7 +26,9 @@ def incidents():
 
 @app.route("/health")
 def health():
-    return render_template("health.html")
+#    return render_template("health.html")
+#    Test only: return an unhealthy response so the pipeline health check fails.
+    return render_template("health.html"), 500
 
 
 
