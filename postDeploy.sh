@@ -14,4 +14,20 @@ systemctl restart serviceops
 
 systemctl is-active --quiet serviceops
 
-curl --fail http://127.0.0.1:5000/health
+# Give ServiceOps several chances to become ready.
+# Try once per second for up to 15 seconds.
+for attempt in {1..15}
+do
+    if curl --fail --silent http://127.0.0.1:5000/health > /dev/null
+    then
+        echo "ServiceOps health check passed."
+        exit 0
+    fi
+
+    echo "Waiting for ServiceOps to become ready... attempt $attempt/15"
+    sleep 1
+done
+
+# If we reach this point, ServiceOps never became healthy.
+echo "ERROR: ServiceOps failed health check."
+exit 1
